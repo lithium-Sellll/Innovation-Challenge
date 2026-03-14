@@ -13,6 +13,7 @@ from data_layer import (
     get_user, get_vitals, get_latest_vitals,
     get_medications, get_today_med_status, get_lab_results,
     add_vitals_record, log_medication,
+    get_community_posts, like_post, add_community_post,
 )
 
 st.set_page_config(
@@ -75,6 +76,15 @@ _S = {
         "thinking": "Thinking…",
         "title_community": "Community",
         "community_empty": "No community posts yet.",
+        "community_new_post": "Share Something",
+        "community_condition_label": "Condition Tag",
+        "community_post_placeholder": "Share your health journey, tips, or questions…",
+        "community_btn_post": "Post",
+        "community_post_success": "Posted!",
+        "community_btn_expand": "Read more",
+        "community_btn_collapse": "Show less",
+        "community_prev": "Prev",
+        "community_next": "Next",
         "lbl_add_vitals": "Add Vitals Record",
         "lbl_systolic": "Systolic (mmHg)", "lbl_diastolic": "Diastolic (mmHg)",
         "lbl_hr": "Heart Rate (bpm)", "lbl_glucose_val": "Glucose (mmol/L)",
@@ -88,7 +98,7 @@ _S = {
         "settings_notif_reports": "Weekly health report",
         "settings_profile": "My Profile",
         "settings_about": "About",
-        "settings_version": "Version 6.0  ·  Powered by Claude AI",
+        "settings_version": "Version 1.0  ·  Powered by ",
     },
     "zh": {
         "app_name": "健康宝",
@@ -114,6 +124,15 @@ _S = {
         "thinking": "思考中…",
         "title_community": "社区",
         "community_empty": "暂无社区帖子。",
+        "community_new_post": "分享动态",
+        "community_condition_label": "病症标签",
+        "community_post_placeholder": "分享您的健康经历、小贴士或问题…",
+        "community_btn_post": "发布",
+        "community_post_success": "已发布！",
+        "community_btn_expand": "展开",
+        "community_btn_collapse": "收起",
+        "community_prev": "上一页",
+        "community_next": "下一页",
         "lbl_add_vitals": "添加体征记录",
         "lbl_systolic": "收缩压 (mmHg)", "lbl_diastolic": "舒张压 (mmHg)",
         "lbl_hr": "心率 (bpm)", "lbl_glucose_val": "血糖 (mmol/L)",
@@ -127,7 +146,7 @@ _S = {
         "settings_notif_reports": "每周健康报告",
         "settings_profile": "我的信息",
         "settings_about": "关于",
-        "settings_version": "版本 6.0  ·  由 Claude AI 驱动",
+        "settings_version": "版本 1.0  ·  由  驱动",
     },
 }
 
@@ -142,6 +161,10 @@ defaults = {
     "notif_meds": True,
     "notif_reports": False,
     "pending_question": None,
+    "audio_mode": False,
+    "community_page": 0,
+    "liked_posts": set(),
+    "post_form_rev": 0,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -457,6 +480,57 @@ html, body, [data-testid="stAppViewContainer"] {
 .hp-community-empty {
     text-align: center; padding: 52px 20px; color: #94A3B8; font-size: 14px;
 }
+/* Card shell: style the st.container() that follows the hidden marker */
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlock"],
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: #fff !important; border-radius: 16px !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07) !important;
+    border: 1px solid #F1F5F9 !important; margin-bottom: 10px !important;
+    overflow: hidden !important; padding: 0 !important;
+}
+/* Flatten inner gap so content + footer sit flush */
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlock"] > div,
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlockBorderWrapper"] > div {
+    gap: 0 !important; padding: 0 !important;
+}
+/* Action footer row */
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlock"] [data-testid="stColumns"],
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stColumns"] {
+    border-top: 1px solid #F1F5F9; padding: 0 8px; margin: 0 !important;
+}
+/* Flat ghost buttons inside the card footer */
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlock"] [data-testid="stColumns"] button,
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stColumns"] button {
+    background: transparent !important; border: none !important;
+    box-shadow: none !important; color: #64748B !important;
+    font-size: 12px !important; font-weight: 500 !important;
+    padding: 6px 4px !important; height: 32px !important;
+    min-height: 0 !important; border-radius: 6px !important;
+}
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlock"] [data-testid="stColumns"] button:hover,
+:has(> .hp-post-marker) + div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stColumns"] button:hover {
+    background: #F8FAFC !important; color: #374151 !important;
+}
+/* Card content classes */
+.hp-post-inner {
+    padding: 14px 16px 10px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.08);
+    border: 1px solid #E8EEF4;
+    margin-bottom: 2px;
+}
+.hp-post-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.hp-post-avatar { font-size: 26px; line-height: 1; flex-shrink: 0; }
+.hp-post-meta { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.hp-post-name { font-weight: 700; font-size: 14px; color: #1E293B; }
+.hp-post-date { font-size: 11px; color: #94A3B8; margin-top: 1px; }
+.hp-post-tag {
+    border-radius: 20px; padding: 4px 10px; font-size: 11px; font-weight: 600;
+    white-space: nowrap; flex-shrink: 0;
+}
+.hp-post-content { font-size: 13px; color: #374151; line-height: 1.55; }
+.hp-post-accent { height: 4px; border-radius: 4px; margin-bottom: 12px; }
 
 /* ── Streamlit widget tweaks ── */
 div[data-testid="stButton"] > button {
@@ -479,6 +553,63 @@ div[data-testid="stExpander"] {
 # ═══════════════════════════════════════════════════════════════════════════
 # LLM — MERaLiON nutrition assistant
 # ═══════════════════════════════════════════════════════════════════════════
+def ask_ai_merlion_audio(audio_bytes: bytes, history: list) -> tuple[str, str]:
+    """Send audio to MERaLiON. Returns (transcribed_text, ai_reply)."""
+    key = get_secret("merlion_API_KEY")
+    if not key:
+        return "🎤 Voice message", "⚠️ MERaLiON API key not configured in secrets.toml"
+    try:
+        from openai import OpenAI
+        import base64
+        client = OpenAI(base_url="http://meralion.org:8010/v1", api_key=key)
+        user = get_user()
+        lv = get_latest_vitals()
+        conditions = ", ".join(user.get("conditions", []))
+        system_prompt = (
+            "You are a professional personal nutrition assistant specialising in Southeast Asian cuisine. "
+            "The user sent a voice message — understand their spoken question and respond with personalised "
+            "food and diet recommendations using SEA dishes (Malaysian, Singaporean, Indonesian, Thai, etc.). "
+            f"Patient: {user.get('name','')}, age {user.get('age','?')}, {user.get('gender','?')}. "
+            f"Conditions: {conditions}. "
+            f"BP: {lv.get('systolic','?')}/{lv.get('diastolic','?')} mmHg, "
+            f"Glucose: {lv.get('glucose','?')} mmol/L. "
+            "IMPORTANT: Detect the language the user spoke and reply in that same language. Be warm and concise."
+        )
+        audio_b64 = base64.b64encode(audio_bytes).decode()
+        # Step 1: transcribe so we can show it in the chat bubble
+        transcribe_msgs = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Transcribe this audio exactly as spoken, no extra text."},
+                {"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{audio_b64}"}},
+            ],
+        }]
+        t_resp = client.chat.completions.create(
+            model="MERaLiON/MERaLiON-3-10B",
+            messages=transcribe_msgs,
+        )
+        transcription = t_resp.choices[0].message.content.strip()
+        # Step 2: answer as nutrition assistant using full history + transcription
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in history:
+            role = "assistant" if msg["role"] == "assistant" else "user"
+            messages.append({"role": role, "content": msg["content"]})
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": transcription},
+                {"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{audio_b64}"}},
+            ],
+        })
+        a_resp = client.chat.completions.create(
+            model="MERaLiON/MERaLiON-3-10B",
+            messages=messages,
+        )
+        return f"🎤 {transcription}", a_resp.choices[0].message.content
+    except Exception as e:
+        return "🎤 Voice message", f"Error: {e}"
+
+
 def ask_ai_merlion(history: list, new_prompt: str) -> str:
     key = get_secret("merlion_API_KEY")
     if not key:
@@ -779,8 +910,18 @@ def page_medications():
 # PAGE: AI CHAT  (MERaLiON SEA nutrition assistant)
 # ═══════════════════════════════════════════════════════════════════════════
 def page_ai_chat():
-    st.markdown(f'<div class="hp-page-title">🥗 {S("title_ai")}</div>', unsafe_allow_html=True)
+    # ── Title row: title + voice toggle button ──
+    tc1, tc2 = st.columns([3, 1])
+    with tc1:
+        st.markdown(f'<div class="hp-page-title" style="position:static;border:none;padding-left:0;">🥗 {S("title_ai")}</div>', unsafe_allow_html=True)
+    with tc2:
+        voice_label = "🎤 Voice" if not st.session_state.audio_mode else "⌨️ Text"
+        if st.button(voice_label, key="toggle_audio", use_container_width=True,
+                     type="primary" if st.session_state.audio_mode else "secondary"):
+            st.session_state.audio_mode = not st.session_state.audio_mode
+            st.rerun()
 
+    # ── Chat history ──
     if st.session_state.chat_history:
         msgs_html = '<div class="chat-scroll">'
         for msg in st.session_state.chat_history:
@@ -789,44 +930,78 @@ def page_ai_chat():
         msgs_html += '</div>'
         st.markdown(msgs_html, unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div class="hp-chat-empty">
-          <div style="font-size:44px;margin-bottom:10px;">🥗</div>
-          <div style="font-weight:600;color:#6B7280;margin-bottom:4px;">Hi, I'm your SEA Nutrition Assistant</div>
-          <div style="font-size:12px;">Ask me for food &amp; diet recommendations tailored to you.</div>
-        </div>""", unsafe_allow_html=True)
+        if st.session_state.audio_mode:
+            st.markdown("""
+            <div class="hp-chat-empty">
+              <div style="font-size:44px;margin-bottom:10px;">🎤</div>
+              <div style="font-weight:600;color:#6B7280;margin-bottom:4px;">Speak in your language</div>
+              <div style="font-size:12px;">Supports Malay · Indonesian · Thai · Vietnamese · Tamil · English · 中文</div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="hp-chat-empty">
+              <div style="font-size:44px;margin-bottom:10px;">🥗</div>
+              <div style="font-weight:600;color:#6B7280;margin-bottom:4px;">Hi, I'm your SEA Nutrition Assistant</div>
+              <div style="font-size:12px;">Ask me for food &amp; diet recommendations tailored to you.</div>
+            </div>""", unsafe_allow_html=True)
 
-    # ── Example question buttons ──
-    example_qs = (
-        [
-            "🍚 糖尿病适合吃什么早餐？",
-            "🥗 推荐低盐东南亚午餐",
-            "🍌 适合我的健康零食？",
-            "🚫 我应该避免哪些食物？",
-        ]
-        if st.session_state.language == "zh"
-        else [
-            "🍚 Breakfast ideas for diabetes?",
-            "🥗 Low-sodium SEA lunch ideas",
-            "🍌 Healthy SEA snacks for me?",
-            "🚫 Foods I should avoid?",
-        ]
-    )
-    eq_cols = st.columns(2)
-    for i, q in enumerate(example_qs):
-        with eq_cols[i % 2]:
-            if st.button(q, key=f"eq_{i}", use_container_width=True):
-                st.session_state.pending_question = q
-                st.rerun()
+    # ── Example question buttons (text mode only) ──
+    if not st.session_state.audio_mode:
+        example_qs = (
+            [
+                "🍚 糖尿病适合吃什么早餐？",
+                "🥗 推荐低盐东南亚午餐",
+                "🍌 适合我的健康零食？",
+                "🚫 我应该避免哪些食物？",
+            ]
+            if st.session_state.language == "zh"
+            else [
+                "🍚 Breakfast ideas for diabetes?",
+                "🥗 Low-sodium SEA lunch ideas",
+                "🍌 Healthy SEA snacks for me?",
+                "🚫 Foods I should avoid?",
+            ]
+        )
+        eq_cols = st.columns(2)
+        for i, q in enumerate(example_qs):
+            with eq_cols[i % 2]:
+                if st.button(q, key=f"eq_{i}", use_container_width=True):
+                    st.session_state.pending_question = q
+                    st.rerun()
 
     st.markdown('<div style="height:6px;"></div>', unsafe_allow_html=True)
-    with st.form("chat_form", clear_on_submit=True):
-        c1, c2 = st.columns([5, 1])
-        with c1:
-            user_input = st.text_input(
-                "msg", label_visibility="collapsed", placeholder=S("user_input"))
-        with c2:
-            send = st.form_submit_button(S("btn_submit"), use_container_width=True)
+
+    # ── Input area: voice mode or text mode ──
+    if st.session_state.audio_mode:
+        st.markdown("""
+        <div style="padding:6px 4px 2px;font-size:12px;color:#6B7280;">
+        🌏 Speak Malay, Indonesian, Thai, Vietnamese, Tamil, English, or 中文
+        </div>""", unsafe_allow_html=True)
+        audio_val = st.audio_input("Record your question", key="voice_input", label_visibility="collapsed")
+        if audio_val is not None:
+            audio_bytes = audio_val.read()
+            if audio_bytes and st.button("📤 Send voice message", key="send_audio", use_container_width=True, type="primary"):
+                with st.spinner(S("thinking")):
+                    transcription, reply = ask_ai_merlion_audio(audio_bytes, st.session_state.chat_history)
+                st.session_state.chat_history.append({"role": "user", "content": transcription})
+                st.session_state.chat_history.append({"role": "assistant", "content": reply})
+                st.rerun()
+    else:
+        with st.form("chat_form", clear_on_submit=True):
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                user_input = st.text_input(
+                    "msg", label_visibility="collapsed", placeholder=S("user_input"))
+            with c2:
+                send = st.form_submit_button(S("btn_submit"), use_container_width=True)
+
+        if send and user_input.strip():
+            txt = user_input.strip()
+            st.session_state.chat_history.append({"role": "user", "content": txt})
+            with st.spinner(S("thinking")):
+                reply = ask_ai_merlion(st.session_state.chat_history[:-1], txt)
+            st.session_state.chat_history.append({"role": "assistant", "content": reply})
+            st.rerun()
 
     # Handle example button click
     if st.session_state.get("pending_question"):
@@ -838,28 +1013,117 @@ def page_ai_chat():
         st.session_state.chat_history.append({"role": "assistant", "content": reply})
         st.rerun()
 
-    if send and user_input.strip():
-        txt = user_input.strip()
-        st.session_state.chat_history.append({"role": "user", "content": txt})
-        with st.spinner(S("thinking")):
-            reply = ask_ai_merlion(st.session_state.chat_history[:-1], txt)
-        st.session_state.chat_history.append({"role": "assistant", "content": reply})
-        st.rerun()
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PAGE: COMMUNITY
 # ═══════════════════════════════════════════════════════════════════════════
 def page_community():
+    user = get_user()
     st.markdown(f'<div class="hp-page-title">👥 {S("title_community")}</div>', unsafe_allow_html=True)
-    st.markdown(f"""
-    <div class="hp-card">
-      <div class="hp-community-empty">
-        <div style="font-size:44px;margin-bottom:12px;">🌱</div>
-        <div style="font-weight:600;color:#6B7280;margin-bottom:4px;">{S('community_empty')}</div>
-        <div style="font-size:12px;">Be the first to share your health journey!</div>
-      </div>
-    </div>""", unsafe_allow_html=True)
+
+    # ── New post form ──────────────────────────────────────────────────────
+    with st.expander("✏️ " + S("community_new_post")):
+        cond_options = ["Type 2 Diabetes", "Hypertension", "Dyslipidemia", "Other"]
+        sel_cond = st.selectbox(S("community_condition_label"), cond_options, key="new_post_cond")
+        rev = st.session_state.post_form_rev
+        post_text = st.text_area(S("community_post_placeholder"), key=f"new_post_text_{rev}", height=100, label_visibility="collapsed")
+        if st.button(S("community_btn_post"), key="submit_post"):
+            if post_text.strip():
+                add_community_post(
+                    author_id=user.get("user_id", "U001"),
+                    author_name=user.get("name", "You"),
+                    author_avatar=user.get("avatar_emoji", "👤"),
+                    condition_tag=sel_cond,
+                    content=post_text.strip(),
+                )
+                st.session_state.post_form_rev += 1  # new key → text_area resets
+                st.session_state.community_page = 0
+                st.success(S("community_post_success"))
+                st.rerun()
+
+    # ── Load posts ─────────────────────────────────────────────────────────
+    df = get_community_posts(limit=100)
+    if df.empty:
+        st.markdown(f"""<div class="hp-card"><div class="hp-community-empty">
+          <div style="font-size:44px;margin-bottom:12px;">🌱</div>
+          <div style="font-weight:600;color:#6B7280;">{S('community_empty')}</div>
+        </div></div>""", unsafe_allow_html=True)
+        return
+
+    POSTS_PER_PAGE = 4
+    total_pages = max(1, -(-len(df) // POSTS_PER_PAGE))
+    page_num = min(st.session_state.get("community_page", 0), total_pages - 1)
+    start = page_num * POSTS_PER_PAGE
+    page_posts = df.iloc[start: start + POSTS_PER_PAGE]
+    liked_set = st.session_state.get("liked_posts", set())
+
+    _TAG_COLORS = {
+        "Type 2 Diabetes": ("#FEF3C7", "#92400E"),
+        "Hypertension":    ("#FEE2E2", "#991B1B"),
+        "Dyslipidemia":    ("#EDE9FE", "#5B21B6"),
+    }
+    _ACCENT_COLORS = {
+        "Type 2 Diabetes": "#F59E0B",
+        "Hypertension":    "#EF4444",
+        "Dyslipidemia":    "#8B5CF6",
+    }
+
+    for _, post in page_posts.iterrows():
+        pid = str(post["post_id"])
+        is_expanded = st.session_state.get(f"exp_{pid}", False)
+        content = str(post["content"])
+        content_display = content if is_expanded else (content[:120] + "…" if len(content) > 120 else content)
+        tag_bg, tag_fg = _TAG_COLORS.get(str(post["condition_tag"]), ("#F1F5F9", "#475569"))
+        accent = _ACCENT_COLORS.get(str(post["condition_tag"]), "#94A3B8")
+        posted_dt = post["posted_at"]
+        posted_str = posted_dt.strftime("%b %d") if hasattr(posted_dt, "strftime") else str(posted_dt)[:10]
+        already_liked = pid in liked_set
+
+        # Hidden marker — CSS :has() targets the NEXT sibling container as a card
+        st.markdown('<div class="hp-post-marker" style="display:none"></div>', unsafe_allow_html=True)
+        with st.container():
+            st.markdown(f"""
+            <div class="hp-post-inner">
+              <div class="hp-post-accent" style="background:{accent};"></div>
+              <div class="hp-post-header">
+                <span class="hp-post-avatar">{post['author_avatar']}</span>
+                <div class="hp-post-meta">
+                  <span class="hp-post-name">{post['author_name']}</span>
+                  <span class="hp-post-date">{posted_str}</span>
+                </div>
+                <span class="hp-post-tag" style="background:{tag_bg};color:{tag_fg};">{post['condition_tag']}</span>
+              </div>
+              <div class="hp-post-content">{content_display}</div>
+            </div>""", unsafe_allow_html=True)
+
+            col1, col2, _ = st.columns([2, 2, 4])
+            with col1:
+                expand_label = S("community_btn_collapse") if is_expanded else S("community_btn_expand")
+                if st.button(expand_label, key=f"toggle_{pid}", use_container_width=True):
+                    st.session_state[f"exp_{pid}"] = not is_expanded
+                    st.rerun()
+            with col2:
+                like_label = f"❤️ {int(post['likes'])}" if already_liked else f"🤍 {int(post['likes'])}"
+                if st.button(like_label, key=f"like_{pid}", use_container_width=True, disabled=already_liked):
+                    like_post(pid)
+                    liked_set.add(pid)
+                    st.session_state.liked_posts = liked_set
+                    st.rerun()
+
+    # ── Pagination ─────────────────────────────────────────────────────────
+    if total_pages > 1:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        pcol1, pcol2, pcol3 = st.columns([1, 2, 1])
+        with pcol1:
+            if page_num > 0 and st.button("← " + S("community_prev"), key="prev_page", use_container_width=True):
+                st.session_state.community_page = page_num - 1
+                st.rerun()
+        with pcol2:
+            st.markdown(f"<div style='text-align:center;font-size:13px;color:#6B7280;padding-top:8px;'>{page_num+1} / {total_pages}</div>", unsafe_allow_html=True)
+        with pcol3:
+            if page_num < total_pages - 1 and st.button(S("community_next") + " →", key="next_page", use_container_width=True):
+                st.session_state.community_page = page_num + 1
+                st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

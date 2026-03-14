@@ -250,6 +250,22 @@ def like_post(post_id: str) -> bool:
     except Exception:
         return False
 
+def add_community_post(author_id: str, author_name: str, author_avatar: str,
+                       condition_tag: str, content: str) -> bool:
+    try:
+        df = _read("community_posts.csv")
+        new_id = f"P{len(df)+1:03d}" if not df.empty else "P001"
+        new_row = pd.DataFrame([{
+            "post_id": new_id, "author_id": author_id, "author_name": author_name,
+            "author_avatar": author_avatar, "condition_tag": condition_tag,
+            "content": content, "likes": 0, "comments": 0,
+            "posted_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }])
+        _write("community_posts.csv", pd.concat([df, new_row], ignore_index=True))
+        return True
+    except Exception:
+        return False
+
 def add_vitals_record(user_id: str, systolic: int, diastolic: int,
                       heart_rate: int, glucose: float, weight_kg: float = None, notes: str = "") -> bool:
     try:
